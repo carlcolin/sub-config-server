@@ -165,11 +165,15 @@ function getConfiguredTokenFingerprints() {
   }));
 }
 
+function nowIso() {
+  return new Date().toISOString();
+}
+
 function logAuthFailure(req, status, code, detail = '') {
   const provided = getRequestToken(req);
   const fingerprint = provided ? getTokenFingerprint(provided) : 'none';
   const suffix = detail ? ` detail=${detail}` : '';
-  console.warn(`[auth] ${status} code=${code} token=${fingerprint} ip=${req.ip} path=${req.originalUrl}${suffix}`);
+  console.warn(`[${nowIso()}] [auth] ${status} code=${code} token=${fingerprint} ip=${req.ip} path=${req.originalUrl}${suffix}`);
 }
 
 function requireToken(req, res, next) {
@@ -226,7 +230,7 @@ function sendConfig(req, res, meta, stat) {
 
   const startedAt = Date.now();
   res.on('finish', () => {
-    console.log(`[serve] ${res.statusCode} profile=${meta.profile} token=${req.authTokenFingerprint || 'none'} download=${meta.download} ip=${req.ip} file=${meta.filePath} bytes=${stat.size} cost=${Date.now() - startedAt}ms`);
+    console.log(`[${nowIso()}] [serve] ${res.statusCode} profile=${meta.profile} token=${req.authTokenFingerprint || 'none'} download=${meta.download} ip=${req.ip} file=${meta.filePath} bytes=${stat.size} cost=${Date.now() - startedAt}ms`);
   });
 
   fs.createReadStream(meta.filePath).pipe(res);
@@ -270,7 +274,7 @@ app.get(['/config/:profile', '/sub/:profile'], requireToken, (req, res) => {
   const relativeFile = getFileMap()[profile];
 
   if (!relativeFile) {
-    console.warn(`[request] 404 code=UNKNOWN_PROFILE profile=${profile} token=${req.authTokenFingerprint || 'none'} ip=${req.ip} path=${req.originalUrl}`);
+    console.warn(`[${nowIso()}] [request] 404 code=UNKNOWN_PROFILE profile=${profile} token=${req.authTokenFingerprint || 'none'} ip=${req.ip} path=${req.originalUrl}`);
     return jsonError(res, 404, 'UNKNOWN_PROFILE', 'unknown profile');
   }
 
@@ -283,13 +287,14 @@ app.get(['/config/:profile', '/sub/:profile'], requireToken, (req, res) => {
 
   const stat = statSafe(filePath);
   if (!stat || !stat.isFile()) {
-    console.warn(`[request] 404 code=CONFIG_FILE_NOT_FOUND profile=${profile} token=${req.authTokenFingerprint || 'none'} ip=${req.ip} path=${req.originalUrl} file=${filePath}`);
+    console.warn(`[${nowIso()}] [request] 404 code=CONFIG_FILE_NOT_FOUND profile=${profile} token=${req.authTokenFingerprint || 'none'} ip=${req.ip} path=${req.originalUrl} file=${filePath}`);
     return jsonError(res, 404, 'CONFIG_FILE_NOT_FOUND', 'config file not found');
   }
 
   const meta = buildMeta(req, profile, filePath, stat);
   const ifNoneMatch = req.get('if-none-match');
   if (ifNoneMatch && ifNoneMatch === meta.etag) {
+    console.log(`[${nowIso()}] [cache] 304 profile=${profile} token=${req.authTokenFingerprint || 'none'} ip=${req.ip} path=${req.originalUrl} reason=etag`);
     return res.status(304).end();
   }
 
@@ -297,6 +302,7 @@ app.get(['/config/:profile', '/sub/:profile'], requireToken, (req, res) => {
   if (ifModifiedSince) {
     const since = new Date(ifModifiedSince);
     if (!Number.isNaN(since.getTime()) && stat.mtime <= since) {
+      console.log(`[${nowIso()}] [cache] 304 profile=${profile} token=${req.authTokenFingerprint || 'none'} ip=${req.ip} path=${req.originalUrl} reason=mtime`);
       return res.status(304).end();
     }
   }
