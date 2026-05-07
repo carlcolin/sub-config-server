@@ -182,9 +182,9 @@ curl http://127.0.0.1:3210/readyz
 
 仓库已包含 GitHub Actions 工作流：
 
-- push 到 `main`：构建并推送 Docker 镜像到 Docker Hub
-- push `v*` tag：构建并推送对应版本 tag
-- Pull Request：只构建，不推送
+- push `v*` tag：构建并推送 Docker 镜像到 Docker Hub
+- Pull Request：只构建校验，不推送
+- `workflow_dispatch`：可手动触发构建
 
 镜像仓库：
 
@@ -206,9 +206,9 @@ skyes/sub-config-server
 
 默认 tag 策略：
 
-- push 到 `main`：推送 `main`、`sha-...`、`latest`
-- push `v*` tag：推送对应 tag（例如 `v1.0.0`）和 `sha-...`
-- Pull Request：只构建，不推送
+- push `v*` tag：推送对应 tag（例如 `v1.0.0`）、`sha-...`，并同步更新 `latest`
+- Pull Request：只构建校验，不推送
+- `workflow_dispatch`：可手动触发构建
 
 ## Docker 运行示例
 

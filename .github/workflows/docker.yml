@@ -2,8 +2,6 @@ name: docker
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*'
   pull_request:
@@ -38,10 +36,9 @@ jobs:
         with:
           images: skyes/sub-config-server
           tags: |
-            type=ref,event=branch
             type=ref,event=tag
             type=sha
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
