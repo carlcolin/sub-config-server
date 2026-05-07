@@ -237,6 +237,12 @@ docker run -d \
 
 > 如果使用 Docker 直接映射端口到宿主机，请在 `.env` 中设置 `HOST=0.0.0.0`。
 
+仓库同时提供了 Docker 场景示例配置文件：
+
+```bash
+cp .env.docker.example .env
+```
+
 仓库已提供现成的 `docker-compose.yml`，可直接使用：
 
 ```bash
