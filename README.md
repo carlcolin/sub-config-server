@@ -237,6 +237,14 @@ docker run -d \
 
 > 如果使用 Docker 直接映射端口到宿主机，请在 `.env` 中设置 `HOST=0.0.0.0`。
 
+仓库已提供现成的 `docker-compose.yml`，可直接使用：
+
+```bash
+docker compose up -d
+```
+
+其内容如下：
+
 ```yaml
 services:
   sub-config-server:
@@ -250,6 +258,11 @@ services:
     volumes:
       - ./configs:/app/configs:ro
       - ./routes.json:/app/routes.json:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 ```
 
 ## Nginx 反代示例

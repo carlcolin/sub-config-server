@@ -1,0 +1,17 @@
+services:
+  sub-config-server:
+    image: skyes/sub-config-server:latest
+    container_name: sub-config-server
+    restart: always
+    ports:
+      - "3210:3210"
+    env_file:
+      - .env
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./routes.json:/app/routes.json:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
