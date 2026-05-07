@@ -47,7 +47,37 @@ function loadFileMap() {
   return normalized;
 }
 
-const FILE_MAP = loadFileMap();
+let fileMap = loadFileMap();
+let lastRoutesError = null;
+
+function getFileMap() {
+  return fileMap;
+}
+
+function reloadFileMap(reason = 'manual') {
+  try {
+    const nextMap = loadFileMap();
+    fileMap = nextMap;
+    lastRoutesError = null;
+    console.log(`[routes] reloaded (${reason}): ${Object.entries(fileMap).map(([k, v]) => `${k}=>${v}`).join(', ')}`);
+    return true;
+  } catch (error) {
+    lastRoutesError = error.message;
+    console.error(`[routes] reload failed (${reason}): ${error.message}`);
+    return false;
+  }
+}
+
+try {
+  fs.watch(ROUTES_FILE, { persistent: false }, (eventType) => {
+    if (eventType === 'change' || eventType === 'rename') {
+      setTimeout(() => reloadFileMap(`fs.watch:${eventType}`), 50);
+    }
+  });
+} catch (error) {
+  lastRoutesError = `watch disabled: ${error.message}`;
+  console.error(`[routes] watch disabled: ${error.message}`);
+}
 
 const CONTENT_TYPES = {
   '.yaml': 'text/yaml; charset=utf-8',
@@ -113,12 +143,18 @@ function sendConfig(res, profile, filePath, stat) {
 }
 
 app.get('/healthz', (req, res) => {
-  res.json({ ok: true, configDir: CONFIG_DIR, routesFile: ROUTES_FILE, profiles: Object.keys(FILE_MAP) });
+  res.json({
+    ok: true,
+    configDir: CONFIG_DIR,
+    routesFile: ROUTES_FILE,
+    profiles: Object.keys(getFileMap()),
+    routesError: lastRoutesError,
+  });
 });
 
 app.get(['/config/:profile', '/sub/:profile'], requireToken, (req, res) => {
   const profile = String(req.params.profile || '').toLowerCase();
-  const relativeFile = FILE_MAP[profile];
+  const relativeFile = getFileMap()[profile];
 
   if (!relativeFile) {
     return res.status(404).json({ error: 'unknown profile' });
@@ -172,5 +208,5 @@ app.listen(PORT, () => {
   console.log(`sub-config-server listening on :${PORT}`);
   console.log(`config dir: ${CONFIG_DIR}`);
   console.log(`routes file: ${ROUTES_FILE}`);
-  console.log(`profiles: ${Object.entries(FILE_MAP).map(([k, v]) => `${k}=>${v}`).join(', ')}`);
+  console.log(`profiles: ${Object.entries(getFileMap()).map(([k, v]) => `${k}=>${v}`).join(', ')}`);
 });

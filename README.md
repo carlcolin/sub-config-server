@@ -9,6 +9,7 @@
 - 支持 `Authorization: Bearer <token>`
 - 支持通过 URL 直接导入订阅
 - 路由从 `routes.json` 读取，后续新增路由不用改代码
+- 修改 `routes.json` 后自动热加载，无需重启服务
 
 ## 目录结构
 
@@ -52,7 +53,8 @@ ACCESS_TOKEN=你的token CONFIG_DIR=./configs ROUTES_FILE=./routes.json npm star
 说明：
 - 左边是路由名
 - 右边是 `configs/` 目录中的文件名
-- 修改 `routes.json` 后重启服务即可生效
+- 修改 `routes.json` 后会自动热加载，通常无需重启服务
+- 如果你改的是配置文件内容本身（如 `configs/mihomo.yaml`），也不需要重启，服务本来就是按请求实时读取文件
 
 例如加了：
 

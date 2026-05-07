@@ -1,0 +1,4 @@
+# 示例 verge 配置
+mode: rule
+rules:
+  - MATCH,DIRECT

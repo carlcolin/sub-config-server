@@ -1,5 +1,6 @@
 {
   "mihomo": "mihomo.yaml",
   "stash": "stash.yaml",
-  "surge": "surge.conf"
+  "surge": "surge.conf",
+  "verge": "verge.yaml"
 }
