@@ -177,6 +177,27 @@ curl http://127.0.0.1:3210/readyz
 }
 ```
 
+## GitHub Actions 构建 Docker 镜像
+
+仓库已包含 GitHub Actions 工作流：
+
+- push 到 `main`：构建并推送 Docker 镜像到 Docker Hub
+- push `v*` tag：构建并推送对应版本 tag
+- Pull Request：只构建，不推送
+
+镜像仓库：
+
+```text
+skyes/sub-config-server
+```
+
+在 GitHub 仓库 `Settings -> Secrets and variables -> Actions` 中配置：
+
+- `DOCKERHUB_USERNAME`
+- `DOCKERHUB_TOKEN`
+
+其中 `DOCKERHUB_TOKEN` 建议使用 Docker Hub Access Token，不要直接使用登录密码。
+
 ## Nginx 反代示例
 
 ```nginx
