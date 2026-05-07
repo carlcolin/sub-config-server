@@ -1,0 +1,10 @@
+# 示例 mihomo 配置
+port: 7890
+socks-port: 7891
+allow-lan: false
+mode: rule
+log-level: info
+proxies: []
+proxy-groups: []
+rules:
+  - MATCH,DIRECT

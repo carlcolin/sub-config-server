@@ -1,0 +1,7 @@
+# 示例 stash 配置
+mode: rule
+log-level: info
+proxies: []
+proxy-groups: []
+rules:
+  - MATCH,DIRECT

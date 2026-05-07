@@ -1,0 +1,14 @@
+{
+  "name": "sub-config-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Token-protected config file distribution service for mihomo/stash/surge",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
