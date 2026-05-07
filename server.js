@@ -6,6 +6,7 @@ const path = require('path');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3210);
+const HOST = String(process.env.HOST || '127.0.0.1').trim() || '127.0.0.1';
 const TOKENS = parseTokens(process.env.ACCESS_TOKENS || process.env.ACCESS_TOKEN || '');
 const CONFIG_DIR = path.resolve(process.env.CONFIG_DIR || path.join(__dirname, 'configs'));
 const ROUTES_FILE = path.resolve(process.env.ROUTES_FILE || path.join(__dirname, 'routes.json'));
@@ -320,11 +321,11 @@ app.get('/', (req, res) => {
   ].join('\n'));
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, HOST, () => {
   const profiles = Object.entries(getFileMap());
-  const baseUrl = PUBLIC_BASE_URL || `http://127.0.0.1:${PORT}`;
+  const baseUrl = PUBLIC_BASE_URL || `http://${HOST}:${PORT}`;
 
-  console.log(`sub-config-server listening on :${PORT}`);
+  console.log(`sub-config-server listening on ${HOST}:${PORT}`);
   console.log(`config dir: ${CONFIG_DIR}`);
   console.log(`routes file: ${ROUTES_FILE}`);
   console.log(`public base url: ${PUBLIC_BASE_URL || '(not set)'}`);

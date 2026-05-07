@@ -128,6 +128,7 @@ curl 'http://127.0.0.1:3210/profiles?token=***'
 ## 环境变量
 
 - `PORT`: 服务端口，默认 `3210`
+- `HOST`: 监听地址，默认 `127.0.0.1`；若使用 Docker 直接映射端口，通常应设为 `0.0.0.0`
 - `ACCESS_TOKEN`: 单个访问令牌
 - `ACCESS_TOKENS`: 多个访问令牌，英文逗号分隔；如果配置它，优先使用它
 - `CONFIG_DIR`: 配置文件目录，默认 `./configs`
@@ -219,6 +220,8 @@ docker pull skyes/sub-config-server:latest
 
 ### docker run
 
+> 如果使用 Docker 直接 `-p 3210:3210` 暴露端口，请确保 `.env` 中设置 `HOST=0.0.0.0`。
+
 ```bash
 docker run -d \
   --name sub-config-server \
@@ -231,6 +234,8 @@ docker run -d \
 ```
 
 ### docker compose
+
+> 如果使用 Docker 直接映射端口到宿主机，请在 `.env` 中设置 `HOST=0.0.0.0`。
 
 ```yaml
 services:
