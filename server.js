@@ -166,7 +166,20 @@ function getConfiguredTokenFingerprints() {
 }
 
 function nowIso() {
-  return new Date().toISOString();
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, '0');
+  const year = now.getFullYear();
+  const month = pad(now.getMonth() + 1);
+  const day = pad(now.getDate());
+  const hours = pad(now.getHours());
+  const minutes = pad(now.getMinutes());
+  const seconds = pad(now.getSeconds());
+  const offsetMinutes = -now.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? '+' : '-';
+  const absOffsetMinutes = Math.abs(offsetMinutes);
+  const offsetHours = pad(Math.floor(absOffsetMinutes / 60));
+  const offsetRemainMinutes = pad(absOffsetMinutes % 60);
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} ${sign}${offsetHours}:${offsetRemainMinutes}`;
 }
 
 function logAuthFailure(req, status, code, detail = '') {
