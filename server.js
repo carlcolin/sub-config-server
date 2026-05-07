@@ -6,17 +6,48 @@ const app = express();
 const PORT = Number(process.env.PORT || 3210);
 const TOKEN = process.env.ACCESS_TOKEN || '';
 const CONFIG_DIR = path.resolve(process.env.CONFIG_DIR || path.join(__dirname, 'configs'));
+const ROUTES_FILE = path.resolve(process.env.ROUTES_FILE || path.join(__dirname, 'routes.json'));
 const TRUST_PROXY = (process.env.TRUST_PROXY || 'false').toLowerCase() === 'true';
 
 if (TRUST_PROXY) {
   app.set('trust proxy', true);
 }
 
-const FILE_MAP = {
-  mihomo: process.env.MIHOMO_FILE || 'mihomo.yaml',
-  stash: process.env.STASH_FILE || 'stash.yaml',
-  surge: process.env.SURGE_FILE || 'surge.conf',
-};
+function loadFileMap() {
+  let raw;
+  try {
+    raw = fs.readFileSync(ROUTES_FILE, 'utf8');
+  } catch (error) {
+    throw new Error(`Failed to read routes file: ${ROUTES_FILE} (${error.message})`);
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`Invalid JSON in routes file: ${ROUTES_FILE} (${error.message})`);
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('routes.json must be an object like {"mihomo":"mihomo.yaml"}');
+  }
+
+  const normalized = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    const profile = String(key || '').trim().toLowerCase();
+    const relativeFile = String(value || '').trim();
+    if (!profile || !relativeFile) continue;
+    normalized[profile] = relativeFile;
+  }
+
+  if (Object.keys(normalized).length === 0) {
+    throw new Error('routes.json does not contain any valid routes');
+  }
+
+  return normalized;
+}
+
+const FILE_MAP = loadFileMap();
 
 const CONTENT_TYPES = {
   '.yaml': 'text/yaml; charset=utf-8',
@@ -82,7 +113,7 @@ function sendConfig(res, profile, filePath, stat) {
 }
 
 app.get('/healthz', (req, res) => {
-  res.json({ ok: true, configDir: CONFIG_DIR, profiles: Object.keys(FILE_MAP) });
+  res.json({ ok: true, configDir: CONFIG_DIR, routesFile: ROUTES_FILE, profiles: Object.keys(FILE_MAP) });
 });
 
 app.get(['/config/:profile', '/sub/:profile'], requireToken, (req, res) => {
@@ -128,10 +159,9 @@ app.get('/', (req, res) => {
     '',
     'Available endpoints:',
     '  GET /healthz',
-    '  GET /config/mihomo?token=YOUR_TOKEN',
-    '  GET /config/stash?token=YOUR_TOKEN',
-    '  GET /config/surge?token=YOUR_TOKEN',
+    '  GET /config/:profile?token=YOUR_TOKEN',
     '  GET /sub/:profile?token=YOUR_TOKEN',
+    '  routes are loaded from routes.json',
     '',
     'Authorization header is also supported:',
     '  Authorization: Bearer YOUR_TOKEN',
@@ -141,5 +171,6 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`sub-config-server listening on :${PORT}`);
   console.log(`config dir: ${CONFIG_DIR}`);
+  console.log(`routes file: ${ROUTES_FILE}`);
   console.log(`profiles: ${Object.entries(FILE_MAP).map(([k, v]) => `${k}=>${v}`).join(', ')}`);
 });
