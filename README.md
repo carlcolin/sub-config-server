@@ -198,6 +198,55 @@ skyes/sub-config-server
 
 其中 `DOCKERHUB_TOKEN` 建议使用 Docker Hub Access Token，不要直接使用登录密码。
 
+当前工作流默认会构建多架构镜像：
+
+- `linux/amd64`
+- `linux/arm64`
+
+默认 tag 策略：
+
+- push 到 `main`：推送 `main`、`sha-...`、`latest`
+- push `v*` tag：推送对应 tag（例如 `v1.0.0`）和 `sha-...`
+- Pull Request：只构建，不推送
+
+## Docker 运行示例
+
+### 拉取镜像
+
+```bash
+docker pull skyes/sub-config-server:latest
+```
+
+### docker run
+
+```bash
+docker run -d \
+  --name sub-config-server \
+  -p 3210:3210 \
+  --env-file .env \
+  -v $(pwd)/configs:/app/configs:ro \
+  -v $(pwd)/routes.json:/app/routes.json:ro \
+  --restart always \
+  skyes/sub-config-server:latest
+```
+
+### docker compose
+
+```yaml
+services:
+  sub-config-server:
+    image: skyes/sub-config-server:latest
+    container_name: sub-config-server
+    restart: always
+    ports:
+      - "3210:3210"
+    env_file:
+      - .env
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./routes.json:/app/routes.json:ro
+```
+
 ## Nginx 反代示例
 
 ```nginx
