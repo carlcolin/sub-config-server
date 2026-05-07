@@ -1,4 +1,5 @@
 require('dotenv').config();
+const crypto = require('crypto');
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -151,18 +152,42 @@ function getRequestToken(req) {
   return String(req.query.token || '');
 }
 
+function getTokenFingerprint(token) {
+  if (!token) return 'none';
+  return crypto.createHash('sha256').update(token).digest('hex').slice(0, 12);
+}
+
+function getConfiguredTokenFingerprints() {
+  return Array.from(TOKENS).map((token, index) => ({
+    index: index + 1,
+    fingerprint: getTokenFingerprint(token),
+  }));
+}
+
+function logAuthFailure(req, status, code, detail = '') {
+  const provided = getRequestToken(req);
+  const fingerprint = provided ? getTokenFingerprint(provided) : 'none';
+  const suffix = detail ? ` detail=${detail}` : '';
+  console.warn(`[auth] ${status} code=${code} token=${fingerprint} ip=${req.ip} path=${req.originalUrl}${suffix}`);
+}
+
 function requireToken(req, res, next) {
   if (TOKENS.size === 0) {
+    logAuthFailure(req, 500, 'TOKEN_NOT_CONFIGURED');
     return jsonError(res, 500, 'TOKEN_NOT_CONFIGURED', 'ACCESS_TOKEN or ACCESS_TOKENS is not configured');
   }
 
   const provided = getRequestToken(req);
   if (!provided) {
+    logAuthFailure(req, 401, 'MISSING_TOKEN');
     return jsonError(res, 401, 'MISSING_TOKEN', 'missing token');
   }
   if (!TOKENS.has(provided)) {
+    logAuthFailure(req, 403, 'INVALID_TOKEN');
     return jsonError(res, 403, 'INVALID_TOKEN', 'invalid token');
   }
+
+  req.authTokenFingerprint = getTokenFingerprint(provided);
   next();
 }
 
@@ -200,7 +225,7 @@ function sendConfig(req, res, meta, stat) {
 
   const startedAt = Date.now();
   res.on('finish', () => {
-    console.log(`[serve] ${res.statusCode} profile=${meta.profile} download=${meta.download} ip=${req.ip} file=${meta.filePath} bytes=${stat.size} cost=${Date.now() - startedAt}ms`);
+    console.log(`[serve] ${res.statusCode} profile=${meta.profile} token=${req.authTokenFingerprint || 'none'} download=${meta.download} ip=${req.ip} file=${meta.filePath} bytes=${stat.size} cost=${Date.now() - startedAt}ms`);
   });
 
   fs.createReadStream(meta.filePath).pipe(res);
@@ -244,6 +269,7 @@ app.get(['/config/:profile', '/sub/:profile'], requireToken, (req, res) => {
   const relativeFile = getFileMap()[profile];
 
   if (!relativeFile) {
+    console.warn(`[request] 404 code=UNKNOWN_PROFILE profile=${profile} token=${req.authTokenFingerprint || 'none'} ip=${req.ip} path=${req.originalUrl}`);
     return jsonError(res, 404, 'UNKNOWN_PROFILE', 'unknown profile');
   }
 
@@ -256,6 +282,7 @@ app.get(['/config/:profile', '/sub/:profile'], requireToken, (req, res) => {
 
   const stat = statSafe(filePath);
   if (!stat || !stat.isFile()) {
+    console.warn(`[request] 404 code=CONFIG_FILE_NOT_FOUND profile=${profile} token=${req.authTokenFingerprint || 'none'} ip=${req.ip} path=${req.originalUrl} file=${filePath}`);
     return jsonError(res, 404, 'CONFIG_FILE_NOT_FOUND', 'config file not found');
   }
 
@@ -302,6 +329,7 @@ app.listen(PORT, () => {
   console.log(`routes file: ${ROUTES_FILE}`);
   console.log(`public base url: ${PUBLIC_BASE_URL || '(not set)'}`);
   console.log(`token mode: ${TOKENS.size > 1 ? `multiple (${TOKENS.size})` : 'single'}`);
+  console.log(`token fingerprints: ${getConfiguredTokenFingerprints().map((item) => `token[${item.index}]=${item.fingerprint}`).join(', ')}`);
   console.log(`profiles: ${formatProfiles(getFileMap())}`);
   console.log('example urls:');
   for (const [profile] of profiles) {

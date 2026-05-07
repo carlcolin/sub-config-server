@@ -13,6 +13,7 @@
 - 支持 `.env` 自动加载
 - 支持多 token
 - 支持启动校验、`/readyz`、`/profiles`
+- 日志支持记录 token 指纹（不输出明文 token）
 
 ## 目录结构
 
@@ -147,6 +148,13 @@ curl http://127.0.0.1:3210/healthz
 ```bash
 curl http://127.0.0.1:3210/readyz
 ```
+
+## 日志说明
+
+- 成功请求会记录：状态码、profile、token 指纹、是否下载、IP、文件路径、字节数、耗时
+- 失败请求也会记录：例如缺 token、错 token、profile 不存在、配置文件不存在
+- 为了安全，日志中不会输出明文 token，只会输出 token 指纹（SHA-256 前 12 位）
+- 启动时会打印已配置 token 的指纹映射，便于排查是哪一个 token 在访问
 
 ## 返回接口
 
