@@ -5,13 +5,31 @@ const path = require('path');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3210);
-const TOKEN = process.env.ACCESS_TOKEN || '';
+const TOKENS = parseTokens(process.env.ACCESS_TOKENS || process.env.ACCESS_TOKEN || '');
 const CONFIG_DIR = path.resolve(process.env.CONFIG_DIR || path.join(__dirname, 'configs'));
 const ROUTES_FILE = path.resolve(process.env.ROUTES_FILE || path.join(__dirname, 'routes.json'));
 const TRUST_PROXY = (process.env.TRUST_PROXY || 'false').toLowerCase() === 'true';
+const PUBLIC_BASE_URL = String(process.env.PUBLIC_BASE_URL || '').trim().replace(/\/$/, '');
 
 if (TRUST_PROXY) {
   app.set('trust proxy', true);
+}
+
+function parseTokens(raw) {
+  return new Set(
+    String(raw || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
+  );
+}
+
+function jsonError(res, status, code, message) {
+  return res.status(status).json({ error: { code, message } });
+}
+
+function formatProfiles(map) {
+  return Object.entries(map).map(([k, v]) => `${k}=>${v}`).join(', ');
 }
 
 function loadFileMap() {
@@ -48,7 +66,37 @@ function loadFileMap() {
   return normalized;
 }
 
-let fileMap = loadFileMap();
+function safeResolve(baseDir, relativeFile) {
+  const resolved = path.resolve(baseDir, relativeFile);
+  if (!resolved.startsWith(baseDir + path.sep) && resolved !== baseDir) {
+    throw new Error('Invalid file path');
+  }
+  return resolved;
+}
+
+function validateStartup() {
+  if (TOKENS.size === 0) {
+    throw new Error('ACCESS_TOKEN or ACCESS_TOKENS is required');
+  }
+
+  const configStat = fs.existsSync(CONFIG_DIR) ? fs.statSync(CONFIG_DIR) : null;
+  if (!configStat || !configStat.isDirectory()) {
+    throw new Error(`CONFIG_DIR does not exist or is not a directory: ${CONFIG_DIR}`);
+  }
+
+  const map = loadFileMap();
+  for (const [profile, relativeFile] of Object.entries(map)) {
+    const filePath = safeResolve(CONFIG_DIR, relativeFile);
+    const stat = statSafe(filePath);
+    if (!stat || !stat.isFile()) {
+      throw new Error(`Config file for profile '${profile}' not found: ${filePath}`);
+    }
+  }
+
+  return map;
+}
+
+let fileMap = validateStartup();
 let lastRoutesError = null;
 
 function getFileMap() {
@@ -58,9 +106,17 @@ function getFileMap() {
 function reloadFileMap(reason = 'manual') {
   try {
     const nextMap = loadFileMap();
+    for (const [profile, relativeFile] of Object.entries(nextMap)) {
+      const filePath = safeResolve(CONFIG_DIR, relativeFile);
+      const stat = statSafe(filePath);
+      if (!stat || !stat.isFile()) {
+        throw new Error(`Config file for profile '${profile}' not found: ${filePath}`);
+      }
+    }
+
     fileMap = nextMap;
     lastRoutesError = null;
-    console.log(`[routes] reloaded (${reason}): ${Object.entries(fileMap).map(([k, v]) => `${k}=>${v}`).join(', ')}`);
+    console.log(`[routes] reloaded (${reason}): ${formatProfiles(fileMap)}`);
     return true;
   } catch (error) {
     lastRoutesError = error.message;
@@ -87,14 +143,6 @@ const CONTENT_TYPES = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
-function safeResolve(baseDir, relativeFile) {
-  const resolved = path.resolve(baseDir, relativeFile);
-  if (!resolved.startsWith(baseDir + path.sep) && resolved !== baseDir) {
-    throw new Error('Invalid file path');
-  }
-  return resolved;
-}
-
 function getRequestToken(req) {
   const auth = req.get('authorization') || '';
   if (auth.toLowerCase().startsWith('bearer ')) {
@@ -104,16 +152,16 @@ function getRequestToken(req) {
 }
 
 function requireToken(req, res, next) {
-  if (!TOKEN) {
-    return res.status(500).json({ error: 'ACCESS_TOKEN is not configured' });
+  if (TOKENS.size === 0) {
+    return jsonError(res, 500, 'TOKEN_NOT_CONFIGURED', 'ACCESS_TOKEN or ACCESS_TOKENS is not configured');
   }
 
   const provided = getRequestToken(req);
   if (!provided) {
-    return res.status(401).json({ error: 'missing token' });
+    return jsonError(res, 401, 'MISSING_TOKEN', 'missing token');
   }
-  if (provided !== TOKEN) {
-    return res.status(403).json({ error: 'invalid token' });
+  if (!TOKENS.has(provided)) {
+    return jsonError(res, 403, 'INVALID_TOKEN', 'invalid token');
   }
   next();
 }
@@ -126,31 +174,69 @@ function statSafe(filePath) {
   }
 }
 
-function sendConfig(res, profile, filePath, stat) {
-  const ext = path.extname(filePath).toLowerCase();
-  const type = CONTENT_TYPES[ext] || 'application/octet-stream';
-  const download = ['1', 'true', 'yes'].includes(String(res.req.query.download || '').toLowerCase());
+function buildMeta(req, profile, filePath, stat) {
+  const download = ['1', 'true', 'yes'].includes(String(req.query.download || '').toLowerCase());
+  const etag = `W/\"${stat.size}-${Number(stat.mtimeMs)}\"`;
+  return {
+    profile,
+    filePath,
+    download,
+    ext: path.extname(filePath).toLowerCase(),
+    type: CONTENT_TYPES[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
+    etag,
+  };
+}
 
-  res.setHeader('Content-Type', type);
+function sendConfig(req, res, meta, stat) {
+  res.setHeader('Content-Type', meta.type);
+  res.setHeader('Content-Length', stat.size);
   res.setHeader('Cache-Control', 'private, max-age=60');
   res.setHeader('Last-Modified', stat.mtime.toUTCString());
-  res.setHeader('ETag', `W/\"${stat.size}-${Number(stat.mtimeMs)}\"`);
-  if (download) {
-    res.setHeader('Content-Disposition', `attachment; filename=\"${path.basename(filePath)}\"`);
+  res.setHeader('ETag', meta.etag);
+  res.setHeader('Vary', 'Authorization');
+  if (meta.download) {
+    res.setHeader('Content-Disposition', `attachment; filename="${path.basename(meta.filePath)}"`);
   }
 
-  fs.createReadStream(filePath).pipe(res);
-  console.log(`[serve] profile=${profile} ip=${res.req.ip} file=${filePath}`);
+  const startedAt = Date.now();
+  res.on('finish', () => {
+    console.log(`[serve] ${res.statusCode} profile=${meta.profile} download=${meta.download} ip=${req.ip} file=${meta.filePath} bytes=${stat.size} cost=${Date.now() - startedAt}ms`);
+  });
+
+  fs.createReadStream(meta.filePath).pipe(res);
+}
+
+function getBaseUrl(req) {
+  if (PUBLIC_BASE_URL) return PUBLIC_BASE_URL;
+  return `${req.protocol}://${req.get('host') || `127.0.0.1:${PORT}`}`;
 }
 
 app.get('/healthz', (req, res) => {
+  res.json({ ok: true });
+});
+
+app.get('/readyz', (req, res) => {
   res.json({
-    ok: true,
+    ok: !lastRoutesError,
     configDir: CONFIG_DIR,
     routesFile: ROUTES_FILE,
     profiles: Object.keys(getFileMap()),
     routesError: lastRoutesError,
+    publicBaseUrl: PUBLIC_BASE_URL || null,
+    tokenMode: TOKENS.size > 1 ? 'multiple' : 'single',
   });
+});
+
+app.get('/profiles', requireToken, (req, res) => {
+  const baseUrl = getBaseUrl(req);
+  const profiles = Object.entries(getFileMap()).map(([name, file]) => ({
+    name,
+    file,
+    subUrl: `${baseUrl}/sub/${name}?token=<ACCESS_TOKEN>`,
+    configUrl: `${baseUrl}/config/${name}?token=<ACCESS_TOKEN>`,
+  }));
+
+  res.json({ profiles, count: profiles.length, tokenMode: TOKENS.size > 1 ? 'multiple' : 'single' });
 });
 
 app.get(['/config/:profile', '/sub/:profile'], requireToken, (req, res) => {
@@ -158,24 +244,24 @@ app.get(['/config/:profile', '/sub/:profile'], requireToken, (req, res) => {
   const relativeFile = getFileMap()[profile];
 
   if (!relativeFile) {
-    return res.status(404).json({ error: 'unknown profile' });
+    return jsonError(res, 404, 'UNKNOWN_PROFILE', 'unknown profile');
   }
 
   let filePath;
   try {
     filePath = safeResolve(CONFIG_DIR, relativeFile);
   } catch (error) {
-    return res.status(400).json({ error: error.message });
+    return jsonError(res, 400, 'INVALID_FILE_PATH', error.message);
   }
 
   const stat = statSafe(filePath);
   if (!stat || !stat.isFile()) {
-    return res.status(404).json({ error: 'config file not found' });
+    return jsonError(res, 404, 'CONFIG_FILE_NOT_FOUND', 'config file not found');
   }
 
+  const meta = buildMeta(req, profile, filePath, stat);
   const ifNoneMatch = req.get('if-none-match');
-  const currentEtag = `W/\"${stat.size}-${Number(stat.mtimeMs)}\"`;
-  if (ifNoneMatch && ifNoneMatch === currentEtag) {
+  if (ifNoneMatch && ifNoneMatch === meta.etag) {
     return res.status(304).end();
   }
 
@@ -187,7 +273,7 @@ app.get(['/config/:profile', '/sub/:profile'], requireToken, (req, res) => {
     }
   }
 
-  sendConfig(res, profile, filePath, stat);
+  sendConfig(req, res, meta, stat);
 });
 
 app.get('/', (req, res) => {
@@ -196,18 +282,32 @@ app.get('/', (req, res) => {
     '',
     'Available endpoints:',
     '  GET /healthz',
-    '  GET /config/:profile?token=YOUR_TOKEN',
-    '  GET /sub/:profile?token=YOUR_TOKEN',
+    '  GET /readyz',
+    '  GET /profiles?token=***',
+    '  GET /config/:profile?token=***',
+    '  GET /sub/:profile?token=***',
     '  routes are loaded from routes.json',
     '',
     'Authorization header is also supported:',
-    '  Authorization: Bearer YOUR_TOKEN',
+    '  Authorization: Bearer ***',
   ].join('\n'));
 });
 
 app.listen(PORT, () => {
+  const profiles = Object.entries(getFileMap());
+  const baseUrl = PUBLIC_BASE_URL || `http://127.0.0.1:${PORT}`;
+
   console.log(`sub-config-server listening on :${PORT}`);
   console.log(`config dir: ${CONFIG_DIR}`);
   console.log(`routes file: ${ROUTES_FILE}`);
-  console.log(`profiles: ${Object.entries(getFileMap()).map(([k, v]) => `${k}=>${v}`).join(', ')}`);
+  console.log(`public base url: ${PUBLIC_BASE_URL || '(not set)'}`);
+  console.log(`token mode: ${TOKENS.size > 1 ? `multiple (${TOKENS.size})` : 'single'}`);
+  console.log(`profiles: ${formatProfiles(getFileMap())}`);
+  console.log('example urls:');
+  for (const [profile] of profiles) {
+    console.log(`  ${baseUrl}/sub/${profile}?token=<ACCESS_TOKEN>`);
+    console.log(`  ${baseUrl}/config/${profile}?token=<ACCESS_TOKEN>`);
+  }
+  console.log(`  ${baseUrl}/profiles?token=<ACCESS_TOKEN>`);
+  console.log(`bearer example: curl -H 'Authorization: Bearer <ACCESS_TOKEN>' ${baseUrl}/config/${profiles[0]?.[0] || 'mihomo'}`);
 });

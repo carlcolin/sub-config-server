@@ -10,6 +10,9 @@
 - 支持通过 URL 直接导入订阅
 - 路由从 `routes.json` 读取，后续新增路由不用改代码
 - 修改 `routes.json` 后自动热加载，无需重启服务
+- 支持 `.env` 自动加载
+- 支持多 token
+- 支持启动校验、`/readyz`、`/profiles`
 
 ## 目录结构
 
@@ -28,13 +31,35 @@ sub-config-server/
 
 ## 启动
 
+### 方式一：使用 `.env`
+
+```bash
+cd sub-config-server
+cp .env.example .env
+npm install
+npm start
+```
+
+### 方式二：命令行传环境变量
+
 ```bash
 cd sub-config-server
 npm install
-ACCESS_TOKEN=你的token CONFIG_DIR=./configs ROUTES_FILE=./routes.json npm start
+ACCESS_TOKEN=*** CONFIG_DIR=./configs ROUTES_FILE=./routes.json npm start
 ```
 
 默认端口：`3210`
+
+## 启动校验
+
+服务启动时会提前检查：
+
+- `ACCESS_TOKEN` / `ACCESS_TOKENS` 是否已配置
+- `CONFIG_DIR` 是否存在
+- `routes.json` 是否可解析
+- 每个路由对应的配置文件是否真实存在
+
+如果有问题，会直接启动失败并打印清晰错误。
 
 ## routes.json
 
@@ -67,8 +92,8 @@ ACCESS_TOKEN=你的token CONFIG_DIR=./configs ROUTES_FILE=./routes.json npm star
 就能访问：
 
 ```bash
-http://127.0.0.1:3210/config/verge?token=你的token
-http://127.0.0.1:3210/sub/verge?token=你的token
+http://127.0.0.1:3210/config/verge?token=***
+http://127.0.0.1:3210/sub/verge?token=***
 ```
 
 ## 访问方式
@@ -76,9 +101,9 @@ http://127.0.0.1:3210/sub/verge?token=你的token
 ### query token
 
 ```bash
-curl 'http://127.0.0.1:3210/config/mihomo?token=你的token'
-curl 'http://127.0.0.1:3210/config/stash?token=你的token'
-curl 'http://127.0.0.1:3210/config/surge?token=你的token'
+curl 'http://127.0.0.1:3210/config/mihomo?token=***'
+curl 'http://127.0.0.1:3210/config/stash?token=***'
+curl 'http://127.0.0.1:3210/config/surge?token=***'
 ```
 
 ### Bearer Token
@@ -90,21 +115,58 @@ curl -H 'Authorization: Bearer 你的token' http://127.0.0.1:3210/config/mihomo
 ### 下载文件
 
 ```bash
-curl -OJ 'http://127.0.0.1:3210/config/mihomo?token=你的token&download=1'
+curl -OJ 'http://127.0.0.1:3210/config/mihomo?token=***&download=1'
+```
+
+### 查询可用 profile
+
+```bash
+curl 'http://127.0.0.1:3210/profiles?token=***'
 ```
 
 ## 环境变量
 
 - `PORT`: 服务端口，默认 `3210`
-- `ACCESS_TOKEN`: 访问令牌，必填
+- `ACCESS_TOKEN`: 单个访问令牌
+- `ACCESS_TOKENS`: 多个访问令牌，英文逗号分隔；如果配置它，优先使用它
 - `CONFIG_DIR`: 配置文件目录，默认 `./configs`
 - `ROUTES_FILE`: 路由映射文件，默认 `./routes.json`
 - `TRUST_PROXY`: 是否信任反代，默认 `false`
+- `PUBLIC_BASE_URL`: 可选；用于启动日志和 `/profiles` 中生成更实用的外部访问地址，例如 `https://sub.example.com`
 
 ## 健康检查
 
+### 存活检查
+
 ```bash
 curl http://127.0.0.1:3210/healthz
+```
+
+### 就绪检查
+
+```bash
+curl http://127.0.0.1:3210/readyz
+```
+
+## 返回接口
+
+### `/profiles`
+
+示例返回：
+
+```json
+{
+  "profiles": [
+    {
+      "name": "mihomo",
+      "file": "mihomo.yaml",
+      "subUrl": "http://127.0.0.1:3210/sub/mihomo?token=<ACCESS_TOKEN>",
+      "configUrl": "http://127.0.0.1:3210/config/mihomo?token=<ACCESS_TOKEN>"
+    }
+  ],
+  "count": 1,
+  "tokenMode": "single"
+}
 ```
 
 ## Nginx 反代示例
